@@ -1,0 +1,630 @@
+/*
+ * Qualcomm Snapdragon 8cx Gen 2 (SC8180XP) SoC Device Tree Source Include
+ *
+ * Derived from ACPI tables dumped from Samsung Galaxy Book Go (CLS08180):
+ *   APIC, IORT, DSDT, GTDT, PPTT, MCFG, FACP, DBG2, CSRT, TPM2
+ *   IASL version 20260408
+ *
+ * ACPI source identifiers:
+ *   OEM: QCOMM, Table ID: SDM8180, PSUB: CLS08180, SIDS: SC8180XP
+ *   SIDV: 0x00020001 (version 2.1), Compiler: MSFT
+ *
+ * FACP flags: Hardware-Reduced ACPI, Low-Power S0 Idle
+ * PSCI: compliant, SMC calling convention (not HVC)
+ *
+ * BUILD NOTE:
+ *   Requires kernel >= 5.16 for qcom,gcc-sc8180x.h clock bindings.
+ *   The reset bindings header (qcom,gcc-sc8180x.h in dt-bindings/reset/)
+ *   is not included here as it may be absent in some ubuntu/noble tree
+ *   checkouts; the one reset reference uses its raw numeric value (69)
+ *   directly instead.
+ *   If your tree has include/dt-bindings/reset/qcom,gcc-sc8180x.h you
+ *   may add that include and replace <&gcc 69> with <&gcc GCC_UFS_PHY_BCR>.
+ */
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/clock/qcom,gcc-sc8180x.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/gpio/gpio.h>
+
+/*
+ * Safety fallbacks: define any GCC_ clock IDs that might be absent from
+ * older copies of qcom,gcc-sc8180x.h (sc8180xp adds QUP1 SE9/SE13).
+ * If the header already defines them these are silently ignored because
+ * the preprocessor will warn on redefinition — add -Wno-macro-redefined
+ * to DTC_FLAGS in your Makefile if you see those warnings.
+ */
+#ifndef GCC_QUPV3_WRAP1_S9_CLK
+#define GCC_QUPV3_WRAP1_S9_CLK         132
+#endif
+#ifndef GCC_QUPV3_WRAP1_S13_CLK
+#define GCC_QUPV3_WRAP1_S13_CLK        136
+#endif
+#ifndef GCC_AGGRE_NOC_PCIE_TBU_CLK
+#define GCC_AGGRE_NOC_PCIE_TBU_CLK     4
+#endif
+
+/ {
+	compatible = "qcom,sc8180xp";
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	/*
+	 * ARM Generic Timer — from GTDT
+	 * Secure EL1 SPI 17, NS EL1 SPI 18, Virtual SPI 19, NS EL2 SPI 16
+	 * Mapped to PPI offsets: EL1s→13, EL1ns→14, virt→11, EL2→10
+	 */
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts =
+			<GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			<GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			<GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			<GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
+		clock-frequency = <19200000>;
+	};
+
+	/*
+	 * GTDT platform timer block @ 0x17C20000 (always-on flag set)
+	 * Frame 0: phys 0x17C21000, EL0 0x17C22000
+	 * Timer SPI 40 (0x28), virtual SPI 38 (0x26)
+	 */
+	timer@17c20000 {
+		compatible = "arm,armv7-timer-mem";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0x0 0x17c20000 0x0 0x1000>;
+		ranges = <0x0 0x0 0x17c20000 0x3000>;
+		clock-frequency = <19200000>;
+		always-on;
+
+		frame@17c21000 {
+			frame-number = <0>;
+			interrupts =
+				<GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
+			reg = <0x1000 0x1000>, <0x2000 0x1000>;
+		};
+	};
+
+	/*
+	 * CPUs — from APIC (MADT) and PPTT
+	 * 8 cores: CPU0-3 efficiency class 0 (Kryo 495 Silver / little)
+	 *          CPU4-7 efficiency class 1 (Kryo 495 Gold  / big)
+	 * MPIDR: Aff1=cpu_index, Aff0=0 (single socket, one cluster)
+	 * PSCI: SMC (FACP ARM Flags bit0=1 PSCI-compliant, bit1=0 → SMC)
+	 */
+	cpus {
+		#address-cells = <2>;
+		#size-cells = <0>;
+
+		cpu-map {
+			cluster0 {
+				core0 { cpu = <&cpu0>; };
+				core1 { cpu = <&cpu1>; };
+				core2 { cpu = <&cpu2>; };
+				core3 { cpu = <&cpu3>; };
+				core4 { cpu = <&cpu4>; };
+				core5 { cpu = <&cpu5>; };
+				core6 { cpu = <&cpu6>; };
+				core7 { cpu = <&cpu7>; };
+			};
+		};
+
+		cpu0: cpu@0 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x0>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <512>;
+			next-level-cache = <&l2_little>;
+			l2_little: l2-cache {
+				compatible = "arm,arch-cache";
+				cache-level = <2>;
+			};
+		};
+
+		cpu1: cpu@100 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x100>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <512>;
+			next-level-cache = <&l2_little>;
+		};
+
+		cpu2: cpu@200 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x200>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <512>;
+			next-level-cache = <&l2_little>;
+		};
+
+		cpu3: cpu@300 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x300>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <512>;
+			next-level-cache = <&l2_little>;
+		};
+
+		cpu4: cpu@400 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x400>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <1024>;
+			next-level-cache = <&l2_big>;
+			l2_big: l2-cache {
+				compatible = "arm,arch-cache";
+				cache-level = <2>;
+			};
+		};
+
+		cpu5: cpu@500 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x500>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <1024>;
+			next-level-cache = <&l2_big>;
+		};
+
+		cpu6: cpu@600 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x600>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <1024>;
+			next-level-cache = <&l2_big>;
+		};
+
+		cpu7: cpu@700 {
+			compatible = "qcom,kryo495", "arm,armv8";
+			device_type = "cpu";
+			reg = <0x0 0x700>;
+			enable-method = "psci";
+			capacity-dmips-mhz = <1024>;
+			next-level-cache = <&l2_big>;
+		};
+	};
+
+	psci {
+		compatible = "arm,psci-1.0";
+		method = "smc";
+	};
+
+	/*
+	 * GIC v3 — from APIC (MADT)
+	 * GICD @ 0x17A00000
+	 * GICR @ 0x17A60000, 1 MB (8 CPUs × 128 KB each)
+	 * ITS  @ 0x17A10000, MSI SPI base 832 count 128
+	 */
+	gic: interrupt-controller@17a00000 {
+		compatible = "arm,gic-v3";
+		#interrupt-cells = <3>;
+		interrupt-controller;
+		reg = <0x0 0x17a00000 0x0 0x10000>,
+		      <0x0 0x17a60000 0x0 0x100000>;
+		interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
+		/* ITS lives inside the GIC aperture; needs its own
+		 * address/size cells so its reg tuple is parsed correctly
+		 * (parent has #address-cells=2 #size-cells=2, so 4 cells
+		 * per reg entry = 0x0 0x17a10000 0x0 0x20000 ✓)          */
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		its: msi-controller@17a10000 {
+			compatible = "arm,gic-v3-its";
+			reg = <0x0 0x17a10000 0x0 0x20000>;
+			msi-controller;
+			#msi-cells = <1>;
+		};
+	};
+
+	pmu {
+		compatible = "arm,armv8-pmuv3";
+		interrupts = <GIC_PPI 7 IRQ_TYPE_LEVEL_HIGH>;
+	};
+
+	/*
+	 * SMMU v2 (primary) — from IORT
+	 * Base 0x15000000, 1 MB
+	 * NSgIrpt (global fault) SPI 97, context IRQs SPI 129-150+
+	 * Covers: GPU, USB, UFS, QUP, PCIe, WLAN, NPU
+	 */
+	smmu0: iommu@15000000 {
+		compatible = "qcom,sc8180x-smmu-500", "arm,mmu-500";
+		reg = <0x0 0x15000000 0x0 0x100000>;
+		#iommu-cells = <2>;
+		#global-interrupts = <1>;
+		interrupts =
+			<GIC_SPI 97  IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 129 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 130 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 131 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 132 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 133 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 135 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 136 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 138 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 139 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 142 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 143 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 144 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 146 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 147 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 148 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 150 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&gcc GCC_AGGRE_NOC_PCIE_TBU_CLK>;
+		clock-names = "bus";
+	};
+
+	/*
+	 * SMMU v2 (secondary) — from IORT
+	 * Base 0x02CA0000, 64 KB
+	 * Context IRQs SPI 712-719
+	 */
+	smmu1: iommu@2ca0000 {
+		compatible = "qcom,sc8180x-smmu-500", "arm,mmu-500";
+		reg = <0x0 0x02ca0000 0x0 0x10000>;
+		#iommu-cells = <2>;
+		#global-interrupts = <1>;
+		interrupts =
+			<GIC_SPI 705 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 712 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 713 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 714 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 715 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 716 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 717 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 718 IRQ_TYPE_LEVEL_HIGH>,
+			<GIC_SPI 719 IRQ_TYPE_LEVEL_HIGH>;
+	};
+
+	/*
+	 * TLMM GPIO controller — from DSDT GIO0 (HID QCOM040D, UID 0)
+	 * Base 0x03000000, size 0xDDC000 (~14 MB)
+	 * SoC GPIO range: 0-174 (175 pins)
+	 * Primary interrupt line: GIC SPI 240
+	 * Additional summary IRQs: 556, 564, 585, 588, 590, 599, 603,
+	 *                          605, 658, 659 (from GIO0 _CRS buffer)
+	 */
+	tlmm: pinctrl@3000000 {
+		compatible = "qcom,sc8180x-pinctrl";
+		reg = <0x0 0x03000000 0x0 0x00ddc000>;
+		interrupts = <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		gpio-ranges = <&tlmm 0 0 175>;
+
+		/* I2C9: keyboard bus (SCL/SDA pins TBD from schematic) */
+		i2c9_default: i2c9-default-state {
+			pins = "gpio47", "gpio48";
+			function = "qup13";
+			drive-strength = <2>;
+			bias-disable;
+		};
+		i2c9_sleep: i2c9-sleep-state {
+			pins = "gpio47", "gpio48";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-up;
+		};
+
+		/* I2C2: touchpad bus (SCL/SDA pins TBD from schematic) */
+		i2c2_default: i2c2-default-state {
+			pins = "gpio15", "gpio16";
+			function = "qup2";
+			drive-strength = <2>;
+			bias-disable;
+		};
+		i2c2_sleep: i2c2-sleep-state {
+			pins = "gpio15", "gpio16";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-up;
+		};
+
+		/* Touchpad interrupt: GPIO 118, confirmed in TLMM range */
+		tp_irq_default: tp-irq-default-state {
+			pins = "gpio118";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-up;
+		};
+
+		/* UFS reset/ref-clk */
+		ufs_default: ufs-default-state {
+			pins = "gpio38";
+			function = "ufs_reset";
+			drive-strength = <16>;
+			bias-disable;
+			output-high;
+		};
+
+		/* Debug UART (UARD) */
+		uart13_default: uart13-default-state {
+			pins = "gpio46", "gpio47";
+			function = "qup13";
+			drive-strength = <2>;
+			bias-disable;
+		};
+		uart13_sleep: uart13-sleep-state {
+			pins = "gpio46", "gpio47";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-up;
+		};
+	};
+
+	/*
+	 * SPMI bus — from DSDT SPMI (HID QCOM040C, CID PNP0CA2, UID 1)
+	 * Base 0x0C400000, size 0x2800000 (40 MB SPMI window)
+	 * PMIC subtree (regulators, GPIO expander) attaches here.
+	 * Individual PMIC nodes are board-specific and go in the .dts.
+	 */
+	spmi_bus: spmi@c440000 {
+		compatible = "qcom,spmi-pmic-arb";
+		reg = <0x0 0x0c440000 0x0 0x01100>,
+		      <0x0 0x0c600000 0x0 0x02000000>,
+		      <0x0 0x0e600000 0x0 0x00100000>,
+		      <0x0 0x0e700000 0x0 0x000a0000>,
+		      <0x0 0x0c40a000 0x0 0x00026000>;
+		reg-names = "core", "chnls", "obsrvr", "intr", "cnfg";
+		interrupt-names = "periph_irq";
+		interrupts = <GIC_SPI 481 IRQ_TYPE_LEVEL_HIGH>;
+		qcom,ee = <0>;
+		qcom,channel = <0>;
+		#address-cells = <2>;
+		#size-cells = <0>;
+		interrupt-controller;
+		#interrupt-cells = <4>;
+	};
+
+	/*
+	 * RPMh clock controller stub
+	 * Required by GCC for CXO/CNOC clocks. Full binding in board .dts.
+	 */
+	rpmhcc: clock-controller {
+		compatible = "qcom,sc8180x-rpmh-clk";
+		#clock-cells = <1>;
+	};
+
+	/*
+	 * GCC (Global Clock Controller)
+	 * Base 0x00100000, size 0x1F0000
+	 * clock/reset/power-domain provider for all peripheral clocks.
+	 * Reset ID for UFS PHY BCR = 69 (raw value; no reset header needed).
+	 */
+	gcc: clock-controller@100000 {
+		compatible = "qcom,gcc-sc8180x";
+		reg = <0x0 0x00100000 0x0 0x1f0000>;
+		#clock-cells = <1>;
+		#reset-cells = <1>;
+		#power-domain-cells = <1>;
+		clock-names = "bi_tcxo", "sleep_clk";
+		clocks = <&rpmhcc RPMH_CXO_CLK>, <&sleep_clk>;
+	};
+
+	xo_board: xo-board-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <19200000>;
+	};
+
+	sleep_clk: sleep-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <32764>;
+	};
+
+	/*
+	 * QUPV3 block 0 wrapper — from DSDT I2C1/2/5/6
+	 * Base 0x00880000, contains SE0-SE6
+	 * I2C1 @ 0x880000 SPI 377, I2C2 @ 0x884000 SPI 378
+	 * I2C5 @ 0x890000 SPI 381, I2C6 @ 0x894000 SPI 382
+	 */
+	geniqup0: geniqup@880000 {
+		compatible = "qcom,geni-se-qup";
+		reg = <0x0 0x00880000 0x0 0x60000>;
+		clock-names = "m-ahb", "s-ahb";
+		clocks = <&gcc GCC_QUPV3_WRAP_0_M_AHB_CLK>,
+		         <&gcc GCC_QUPV3_WRAP_0_S_AHB_CLK>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		i2c1: i2c@880000 {
+			compatible = "qcom,geni-i2c";
+			reg = <0x0 0x00880000 0x0 0x4000>;
+			clock-names = "se";
+			clocks = <&gcc GCC_QUPV3_WRAP0_S1_CLK>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&i2c1_default>;
+			pinctrl-1 = <&i2c1_sleep>;
+			interrupts = <GIC_SPI 377 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		i2c2: i2c@884000 {
+			compatible = "qcom,geni-i2c";
+			reg = <0x0 0x00884000 0x0 0x4000>;
+			clock-names = "se";
+			clocks = <&gcc GCC_QUPV3_WRAP0_S2_CLK>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&i2c2_default>;
+			pinctrl-1 = <&i2c2_sleep>;
+			interrupts = <GIC_SPI 378 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		i2c5: i2c@890000 {
+			compatible = "qcom,geni-i2c";
+			reg = <0x0 0x00890000 0x0 0x4000>;
+			clock-names = "se";
+			clocks = <&gcc GCC_QUPV3_WRAP0_S5_CLK>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&i2c5_default>;
+			pinctrl-1 = <&i2c5_sleep>;
+			interrupts = <GIC_SPI 381 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		i2c6: i2c@894000 {
+			compatible = "qcom,geni-i2c";
+			reg = <0x0 0x00894000 0x0 0x4000>;
+			clock-names = "se";
+			clocks = <&gcc GCC_QUPV3_WRAP0_S6_CLK>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&i2c6_default>;
+			pinctrl-1 = <&i2c6_sleep>;
+			interrupts = <GIC_SPI 382 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+	};
+
+	/*
+	 * QUPV3 block 1 wrapper — from DSDT I2C9 + UARD
+	 * Base 0x00A00000, contains SE0-SE13
+	 * I2C9 @ 0xA80000 SPI 385, UART @ 0xA90000 SPI 389
+	 */
+	geniqup1: geniqup@a00000 {
+		compatible = "qcom,geni-se-qup";
+		reg = <0x0 0x00a00000 0x0 0x60000>;
+		clock-names = "m-ahb", "s-ahb";
+		clocks = <&gcc GCC_QUPV3_WRAP_1_M_AHB_CLK>,
+		         <&gcc GCC_QUPV3_WRAP_1_S_AHB_CLK>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		i2c9: i2c@a80000 {
+			compatible = "qcom,geni-i2c";
+			reg = <0x0 0x00a80000 0x0 0x4000>;
+			clock-names = "se";
+			clocks = <&gcc GCC_QUPV3_WRAP1_S9_CLK>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&i2c9_default>;
+			pinctrl-1 = <&i2c9_sleep>;
+			interrupts = <GIC_SPI 385 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
+
+		uart13: serial@a90000 {
+			compatible = "qcom,geni-uart";
+			reg = <0x0 0x00a90000 0x0 0x4000>;
+			clock-names = "se";
+			clocks = <&gcc GCC_QUPV3_WRAP1_S13_CLK>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&uart13_default>;
+			pinctrl-1 = <&uart13_sleep>;
+			interrupts = <GIC_SPI 389 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+		};
+	};
+
+	/*
+	 * UFS storage — from DSDT UFS0 + IORT
+	 * Base 0x01D84000, size 0x14000, SPI 297
+	 * _CCA=1 (cache-coherent DMA), maps to SMMU0
+	 * Reset ID 69 = GCC_UFS_PHY_BCR (raw value, no header needed)
+	 */
+	ufs0: ufshc@1d84000 {
+		compatible = "qcom,sc8180x-ufshc", "qcom,ufshc",
+		             "jedec,ufs-2.0";
+		reg = <0x0 0x01d84000 0x0 0x14000>;
+		interrupts = <GIC_SPI 297 IRQ_TYPE_LEVEL_HIGH>;
+		iommus = <&smmu0 0x81030000 0x0>;
+		clock-names =
+			"core_clk", "bus_aggr_clk", "iface_clk",
+			"core_clk_unipro", "ref_clk",
+			"tx_lane0_sync_clk",
+			"rx_lane0_sync_clk", "rx_lane1_sync_clk";
+		clocks =
+			<&gcc GCC_UFS_PHY_AXI_CLK>,
+			<&gcc GCC_AGGRE_UFS_PHY_AXI_CLK>,
+			<&gcc GCC_UFS_PHY_AHB_CLK>,
+			<&gcc GCC_UFS_PHY_UNIPRO_CORE_CLK>,
+			<&xo_board>,
+			<&gcc GCC_UFS_PHY_TX_SYMBOL_0_CLK>,
+			<&gcc GCC_UFS_PHY_RX_SYMBOL_0_CLK>,
+			<&gcc GCC_UFS_PHY_RX_SYMBOL_1_CLK>;
+		freq-table-hz =
+			<75000000 300000000>,
+			<0 0>, <0 0>,
+			<37500000 150000000>,
+			<0 0>, <0 0>, <0 0>, <0 0>;
+		/* raw reset ID 69 = GCC_UFS_PHY_BCR */
+		resets = <&gcc 69>;
+		reset-names = "rst";
+		pinctrl-names = "default";
+		pinctrl-0 = <&ufs_default>;
+		lanes-per-direction = <2>;
+		#reset-cells = <1>;
+		status = "disabled";
+	};
+
+	/*
+	 * PCIe segment 0 — from MCFG, ECAM base 0x60000000
+	 * Most likely bus for Wi-Fi (WCN3998/QCN9074)
+	 * Disabled by default; enable in board .dts once link confirmed.
+	 */
+	pcie0: pcie@1c00000 {
+		compatible = "qcom,pcie-sc8180x";
+		reg = <0x0 0x01c00000 0x0 0x3000>,
+		      <0x0 0x60000000 0x0 0x2000>,
+		      <0x0 0x60100000 0x0 0xd00000>;
+		reg-names = "parf", "dbi", "elbi";
+		device_type = "pci";
+		linux,pci-domain = <0>;
+		bus-range = <0x00 0x01>;
+		num-lanes = <1>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges =
+			<0x81000000 0x0 0x00000000 0x0 0x60e00000 0x0 0x100000>,
+			<0x82000000 0x0 0x60f00000 0x0 0x60f00000 0x0 0x100000>;
+		/* msi-parent two-cell form: phandle + one msi-cells value (0) */
+		msi-parent = <&its 0x0>;
+		iommu-map = <0x0 &smmu0 0x87030000 0x10000>;
+		status = "disabled";
+	};
+
+	/* TPM 2.0 CRB — from TPM2 table, control addr 0x9FFDA000 */
+	tpm@9ffda000 {
+		compatible = "microsoft,ftpm";
+		reg = <0x0 0x9ffda000 0x0 0x1000>;
+	};
+
+	chosen {};
+
+	firmware {
+		scm {
+			compatible = "qcom,scm-sc8180x", "qcom,scm";
+		};
+	};
+};

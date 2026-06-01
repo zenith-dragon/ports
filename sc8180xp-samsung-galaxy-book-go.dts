@@ -1,0 +1,232 @@
+/*
+ * Samsung Galaxy Book Go — Snapdragon 8cx Gen 2 (SC8180XP)
+ * Board Device Tree Source
+ *
+ * WORK IN PROGRESS
+ * ACPI platform: CLS08180 (Samsung Clamshell SC8180XP)
+ * SIDS: SC8180XP, SIDV: 0x00020001
+ *
+ *
+ * Input devices (from DSDT):
+ *   \_SB.I2C9.ECKB  keyboard  SSEC0001/PNP0C50  addr 0x05
+ *   \_SB.I2C2.ECTC  touchpad  SAM060B           addr 0x62
+ *   \_SB.I2C1.TCPD  USB-C PD  SSTP0001/PNP0C50  addr 0x40
+ */
+
+/dts-v1/;
+
+#include "sc8180xp.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/ {
+	model = "Samsung Galaxy Book Go (SC8180XP)";
+	compatible = "samsung,galaxy-book-go-sc8180xp", "qcom,sc8180xp";
+
+	aliases {
+		serial0 = &uart13;
+		i2c0    = &i2c1;
+		i2c1    = &i2c2;
+		i2c4    = &i2c5;
+		i2c5    = &i2c6;
+		i2c8    = &i2c9;
+	};
+
+	/*
+	 * Early console — DBG2 table entry 0:
+	 *   Type 0x8000/0x0011 = SBSA UART, base 0x00A90000
+	 * Kernel cmdline must include:
+	 *   console=ttyMSM0,115200n8 efi=noruntime
+	 */
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	/*
+	 * Lid switch — DSDT \_SB.LID0 (PNP0C0D)
+	 * LIDR field reads GPIO pin 0x32 = 50 on GIO0 (TLMM)
+	 */
+	lid-switch {
+		compatible = "gpio-keys";
+		label = "Lid";
+
+		lid {
+			label = "Lid Switch";
+			gpios = <&tlmm 50 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_LID>;
+			wakeup-source;
+			debounce-interval = <50>;
+		};
+	};
+};
+
+/* ====================================================================
+ * Additional pinctrl states needed by board devices
+ * (dtsi already defines i2c2, i2c9, uart13 states)
+ * ==================================================================== */
+&tlmm {
+	/* I2C1 pins (USB-C PD controller) — verify from schematic */
+	i2c1_default: i2c1-default-state {
+		pins = "gpio55", "gpio56";
+		function = "qup1";
+		drive-strength = <2>;
+		bias-disable;
+	};
+	i2c1_sleep: i2c1-sleep-state {
+		pins = "gpio55", "gpio56";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	/* I2C5 pins — verify from schematic */
+	i2c5_default: i2c5-default-state {
+		pins = "gpio85", "gpio86";
+		function = "qup5";
+		drive-strength = <2>;
+		bias-disable;
+	};
+	i2c5_sleep: i2c5-sleep-state {
+		pins = "gpio85", "gpio86";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	/* I2C6 pins — verify from schematic */
+	i2c6_default: i2c6-default-state {
+		pins = "gpio95", "gpio96";
+		function = "qup6";
+		drive-strength = <2>;
+		bias-disable;
+	};
+	i2c6_sleep: i2c6-sleep-state {
+		pins = "gpio95", "gpio96";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+};
+
+/* ====================================================================
+ * I2C2 — touchpad (ECTC, SAM060B)
+ * DSDT: addr 0x62, 400 kHz, GPIO 118 rising edge (TLMM, in-range)
+ * ==================================================================== */
+&i2c2 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	touchpad@62 {
+		compatible = "hid-over-i2c";
+		reg = <0x62>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <118 IRQ_TYPE_EDGE_RISING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&tp_irq_default>;
+		wakeup-source;
+	};
+};
+
+/* ====================================================================
+ * I2C9 — keyboard (ECKB, SSEC0001/PNP0C50)
+ * DSDT: addr 0x05, 400 kHz, HID descriptor @ 0x0020
+ * GPIO 640 interrupt — PMIC GPIO, NOT a TLMM pin.
+ *
+ * PLACEHOLDER: the interrupt below uses GPIO 118 as a stub so the DTS
+ * compiles and the I2C bus initialises. The keyboard will not generate
+ * interrupts until you replace this with the correct PMIC GPIO.
+ * ==================================================================== */
+&i2c9 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	keyboard@5 {
+		compatible = "hid-over-i2c";
+		reg = <0x05>;
+		hid-descr-addr = <0x0020>;
+		/* PLACEHOLDER — replace with PMIC GPIO once identified */
+		interrupt-parent = <&tlmm>;
+		interrupts = <118 IRQ_TYPE_EDGE_RISING>;
+		wakeup-source;
+	};
+};
+
+/* ====================================================================
+ * I2C1 — USB-C PD controller (TCPD, SSTP0001/PNP0C50)
+ * DSDT: addr 0x40, 400 kHz, HID descriptor @ 0x000E
+ * GPIO 448 interrupt — also a PMIC GPIO (exceeds TLMM range of 0-174)
+ * Same resolution process as keyboard GPIO above.
+ * ==================================================================== */
+&i2c1 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	usb_pd@40 {
+		compatible = "hid-over-i2c";
+		reg = <0x40>;
+		hid-descr-addr = <0x000e>;
+		/* PLACEHOLDER — replace with PMIC GPIO once identified */
+		interrupt-parent = <&tlmm>;
+		interrupts = <118 IRQ_TYPE_EDGE_RISING>;
+	};
+};
+
+/* ====================================================================
+ * Debug UART — GENI SE @ 0x00A90000
+ * DBG2: SBSA UART, address 0x00A90000
+ * Console: ttyMSM0 at 115200
+ * ==================================================================== */
+&uart13 {
+	status = "okay";
+};
+
+/* ====================================================================
+ * UFS internal storage — from DSDT UFS0
+ * Voltage rails are PMIC-dependent; stub references below.
+ * Enable after SPMI/PMIC bringup and rail name confirmation.
+ * ==================================================================== */
+&ufs0 {
+	status = "okay";
+	/*
+	 * TODO: replace stub regulator references with real PMIC rails.
+	 * Typical SC8180XP rail mapping:
+	 *   vcc   -> PM8150 L17 (2.95 V)
+	 *   vccq  -> PM8150 L6  (1.2 V)
+	 *   vccq2 -> PM8150 S4  (1.8 V)
+	 * These must be defined in the SPMI PMIC subtree first.
+	 */
+};
+
+/* ====================================================================
+ * WHAT STILL NEEDS RESOLVING BEFORE FULL FUNCTIONALITY
+ * ====================================================================
+ *
+ * CRITICAL (blocks keyboard interrupt):
+ *   - Identify PMIC GPIO for keyboard IRQ (ACPI GPIO 640 / 0x280)
+ *     and touchpad IRQ (placeholder; GPIO 118 is correct for touchpad)
+ *   - Add SPMI PMIC subtree (PM8150 + PM8150L) to this file
+ *     Required for: all voltage regulators, PMIC GPIOs, battery
+ *
+ * NEEDED FOR DISPLAY:
+ *   - DSI panel timings and panel compatible string
+ *   - Adreno 685 GPU node (gpu0 in DSDT, 51 IOMMU mappings in IORT)
+ *   - PMIC display rails (PM8150L LDOs)
+ *
+ * NEEDED FOR WIFI:
+ *   - Enable pcie0 and confirm PCIe link comes up
+ *   - linux-firmware package: wcn* or qca* blobs
+ *
+ * NEEDED FOR AUDIO:
+ *   - ADSP/CDSP nodes (IORT: \_SB.ADSP.SLM1.ADCM → SMMU0)
+ *   - QCOM APR + audio graph bindings
+ *
+ * PIN VERIFICATION NEEDED:
+ *   - I2C1 SCL/SDA (currently gpio55/gpio56 — confirm from schematic)
+ *   - I2C2 SCL/SDA (currently gpio15/gpio16 — confirm from schematic)
+ *   - I2C9 SCL/SDA (currently gpio47/gpio48 — confirm from schematic)
+ *   - UART13 TX/RX  (currently gpio46/gpio47 — confirm from schematic)
+ *   - I2C5 SCL/SDA (currently gpio85/gpio86 — confirm from schematic)
+ *   - I2C6 SCL/SDA (currently gpio95/gpio96 — confirm from schematic)
+ * ==================================================================== */
