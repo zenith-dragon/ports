@@ -1,2 +1,3 @@
-# ports
-Attempts to port Qualcomm Snapdragon devices to Linux
+# Ports
+## About
+These are attempts to port some still unsupported Qualcomm Snapdragon devices to Linux. 
